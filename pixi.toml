@@ -19,9 +19,13 @@ mojo = "*"
 # no Mojo toolchain, so this runs even before `pixi install` finishes.
 spike = "./sandbox/spike.sh"
 
-# Build the harness. NOTE: src/ is structural scaffold (idiomatic Mojo, not yet
-# compiled) — these tasks are the intended build wiring, mirroring mojo-backend.
-# -I ../flare: HTTP client for the remote model + local inference-server.
+# FIRST VERTICAL SLICE — compiles + runs today. Renders the Seatbelt profile and
+# execs under sandbox-exec from Mojo (src/sandbox.mojo), then verifies containment
+# (mirrors the spike, but Mojo-driven). This is what `pixi run build` produces.
+build        = { cmd = "mkdir -p build && mojo build src/sandbox_demo.mojo -o build/sandbox-demo" }
+sandbox-demo = { cmd = "mkdir -p build && mojo build src/sandbox_demo.mojo -o build/sandbox-demo && ./build/sandbox-demo" }
+
+# Full composition root (src/headgate.mojo) — still scaffold; builds once the
+# transport layer is wired to flare. -I ../flare: HTTP for remote + local models;
 # -I ../minja2/src: JSON + prompt templating.
-build = { cmd = "mkdir -p build && mojo build src/headgate.mojo -I ../flare -I ../minja2/src -o build/headgate" }
-run   = { cmd = "mkdir -p build && mojo build src/headgate.mojo -I ../flare -I ../minja2/src -o build/headgate && ./build/headgate" }
+build-full = { cmd = "mkdir -p build && mojo build src/headgate.mojo -I ../flare -I ../minja2/src -o build/headgate" }

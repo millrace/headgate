@@ -123,6 +123,16 @@ Early, but past "just a doc":
   macOS / Apple Silicon — `pixi run spike` (or `./sandbox/spike.sh`) passes 6/6
   checks: network egress denied, writes scoped, `$HOME` reads denied. See
   [SPIKE.md](SPIKE.md).
-- **Layers: scaffolded.** `src/` holds the pi-shaped layering as idiomatic Mojo
-  stubs encoding the contracts (TODOs mark flare transport, schema introspection,
-  `posix_spawn`). Not yet compiled — `pixi install` pulls the toolchain.
+- **First vertical slice: compiles + runs.** `src/sandbox.mojo` is filled in
+  end-to-end — it renders the Seatbelt profile, canonicalizes paths (`realpath`),
+  execs under `sandbox-exec`, and captures exit code + output, all from Mojo.
+  `pixi run sandbox-demo` (or `pixi run build`) builds `build/sandbox-demo`, which
+  re-verifies containment from Mojo: in-scope read works, out-of-scope read and
+  network egress are denied.
+- **Other layers: scaffolded.** The remaining `src/` files (egress, schema,
+  transport, broker, orchestrator) encode the contracts as stubs. NOTE: they
+  predate the bundled `mojo-syntax` skill and still use removed `fn` syntax —
+  convert to `def` before wiring `build-full`.
+- **Mojo conventions:** `.agents/skills/mojo-syntax` (copied from `mojo-backend`)
+  is the source of truth for current Mojo syntax — follow it over pretrained
+  knowledge (this nightly removed `fn`, `alias`, and String slicing).
