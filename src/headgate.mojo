@@ -13,10 +13,10 @@ Layering (pi-shaped, PRIOR-ART.md):
         |
     sandbox.mojo + broker.mojo   (containment — PROVEN, see SPIKE.md)
 
-`pixi run spike` proves the containment boundary today. The src/ layer is
-structural scaffold (idiomatic Mojo, not yet compiled) — `pixi run build` is the
-intended wiring once the TODOs (flare transport, schema introspection,
-posix_spawn) are filled in.
+`pixi run sandbox-demo` proves the containment boundary today. The rest of the
+graph compiles (`pixi run build-full`) but the layers above the sandbox are still
+stubs — the TODOs (flare transport, schema introspection, capability shim) are
+where the real behavior goes next.
 """
 
 from egress import EgressGuard
@@ -27,7 +27,7 @@ from broker import CapabilityBroker
 from orchestrator import Orchestrator
 
 
-fn main() raises:
+def main() raises:
     # Confidentiality: fingerprints of real values + canaries seeded in real data.
     var guard = EgressGuard(List[String](), List[String]())
 

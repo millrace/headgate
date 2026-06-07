@@ -21,7 +21,7 @@ struct ChatMessage(Movable, Copyable):
     var role: String     # "system" | "user" | "assistant"
     var content: String
 
-    fn __init__(out self, owned role: String, owned content: String):
+    def __init__(out self, var role: String, var content: String):
         self.role = role^
         self.content = content^
 
@@ -30,10 +30,10 @@ struct LocalClient(Movable):
     """Local model via inference-server. baseURL is the OpenAI seam (README.md)."""
     var base_url: String   # e.g. http://127.0.0.1:8000/v1
 
-    fn __init__(out self, owned base_url: String):
+    def __init__(out self, var base_url: String):
         self.base_url = base_url^
 
-    fn chat(self, messages: List[ChatMessage]) raises -> String:
+    def chat(self, messages: List[ChatMessage]) raises -> String:
         """POST /chat/completions to the local server. No egress guard — local
         only. TODO: flare HttpClient call + parse."""
         return String("")  # TODO
@@ -46,19 +46,19 @@ struct RemoteClient(Movable):
     var api_key: String
     var guard: EgressGuard
 
-    fn __init__(out self, owned base_url: String, owned api_key: String, owned guard: EgressGuard):
+    def __init__(out self, var base_url: String, var api_key: String, var guard: EgressGuard):
         self.base_url = base_url^
         self.api_key = api_key^
         self.guard = guard^
 
-    fn codegen(self, messages: List[ChatMessage]) raises -> String:
+    def codegen(self, messages: List[ChatMessage]) raises -> String:
         """Ask the remote model to write code. Each message's content must clear
         the EgressGuard before it can be serialized to the wire. Fails closed:
         if the guard raises, nothing is sent."""
         var safe = List[ChatMessage]()
-        for ref m in messages:
+        for m in messages:
             var checked = self.guard.check(m.content)   # raises -> aborts send
-            safe.append(ChatMessage(String(m.role), checked^))
+            safe.append(ChatMessage(m.role.copy(), checked^))
         # TODO: flare HttpClient POST to {base_url}/chat/completions with `safe`.
         _ = safe
         return String("")  # TODO

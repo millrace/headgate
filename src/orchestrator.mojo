@@ -15,10 +15,9 @@ The remote model is a code generator, never a live agent over the data — so th
 is no tool-result feedback loop carrying real data upstream (per our design check).
 """
 
-from egress import EgressGuard
 from schema import SchemaSanitizer, SanitizedSchema
 from transport import LocalClient, RemoteClient, ChatMessage
-from sandbox import Sandbox, SandboxPolicy, RunResult
+from sandbox import Sandbox
 from broker import CapabilityBroker
 
 
@@ -30,13 +29,13 @@ struct Orchestrator(Movable):
     var broker: CapabilityBroker
     var max_debug_iters: Int
 
-    fn __init__(
+    def __init__(
         out self,
-        owned local: LocalClient,
-        owned remote: RemoteClient,
-        owned sanitizer: SchemaSanitizer,
-        owned sandbox: Sandbox,
-        owned broker: CapabilityBroker,
+        var local: LocalClient,
+        var remote: RemoteClient,
+        var sanitizer: SchemaSanitizer,
+        var sandbox: Sandbox,
+        var broker: CapabilityBroker,
     ):
         self.local = local^
         self.remote = remote^
@@ -45,7 +44,7 @@ struct Orchestrator(Movable):
         self.broker = broker^
         self.max_debug_iters = 5
 
-    fn run_task(self, intent: String, data_dir: String) raises -> String:
+    def run_task(self, intent: String, data_dir: String) raises -> String:
         """Execute one privacy-preserving task end to end."""
         # 1. Sanitize: aliased schema + synthetic samples (no real data/names).
         var schema = self.sanitizer.sanitize(data_dir)
@@ -62,10 +61,10 @@ struct Orchestrator(Movable):
         # 4. Local model summarizes the local result for the user.
         var msgs = List[ChatMessage]()
         msgs.append(ChatMessage(String("system"), String("Summarize the result.")))
-        msgs.append(ChatMessage(String("user"), real.stdout))
+        msgs.append(ChatMessage(String("user"), real.output.copy()))
         return self.local.chat(msgs)
 
-    fn _debug_loop(self, intent: String, schema: SanitizedSchema) raises -> String:
+    def _debug_loop(self, intent: String, schema: SanitizedSchema) raises -> String:
         """Iterate codegen <-> synthetic run until it passes or we give up."""
         var i = 0
         var code = String("")

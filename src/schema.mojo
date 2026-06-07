@@ -16,43 +16,43 @@ The real data is never described by value or by name to the remote model.
 
 
 struct Column(Movable, Copyable):
-    var real_name: String   # never leaves the machine
-    var alias: String       # what the remote model sees, e.g. "col_3"
-    var dtype: String       # "int" | "float" | "string" | "categorical[k]" | ...
+    var real_name: String    # never leaves the machine
+    var alias_name: String   # what the remote model sees, e.g. "col_3"
+    var dtype: String        # "int" | "float" | "string" | "categorical[k]" | ...
 
-    fn __init__(out self, owned real_name: String, owned alias: String, owned dtype: String):
+    def __init__(out self, var real_name: String, var alias_name: String, var dtype: String):
         self.real_name = real_name^
-        self.alias = alias^
+        self.alias_name = alias_name^
         self.dtype = dtype^
 
 
 struct SanitizedSchema(Movable):
     var columns: List[Column]
 
-    fn __init__(out self, owned columns: List[Column]):
+    def __init__(out self, var columns: List[Column]):
         self.columns = columns^
 
-    fn aliased_json(self) -> String:
+    def aliased_json(self) -> String:
         """The schema as the remote model sees it — aliases + dtypes only, no
         real names, no values. TODO: emit via minja2's JSON serializer."""
         return String("{}")  # TODO
 
-    fn synthetic_samples(self, n: Int) -> String:
+    def synthetic_samples(self, n: Int) -> String:
         """`n` fake rows matching the aliased schema's types. Used for the
         debug loop so the remote never touches real data. TODO."""
         return String("[]")  # TODO
 
-    fn dealias_code(self, code: String) -> String:
+    def dealias_code(self, code: String) -> String:
         """Map aliases in generated code back to real names before the sandbox
         runs it locally. The reverse map stays here, never sent. TODO."""
-        return code
+        return code.copy()
 
 
 struct SchemaSanitizer(Movable):
-    fn __init__(out self):
+    def __init__(out self):
         pass
 
-    fn sanitize(self, data_dir: String) raises -> SanitizedSchema:
+    def sanitize(self, data_dir: String) raises -> SanitizedSchema:
         """Inspect the private data at `data_dir`, derive types, alias names.
         Reads happen locally only. TODO: real introspection (CSV/parquet/SQL)."""
         return SanitizedSchema(List[Column]())  # TODO

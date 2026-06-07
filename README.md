@@ -129,10 +129,16 @@ Early, but past "just a doc":
   `pixi run sandbox-demo` (or `pixi run build`) builds `build/sandbox-demo`, which
   re-verifies containment from Mojo: in-scope read works, out-of-scope read and
   network egress are denied.
-- **Other layers: scaffolded.** The remaining `src/` files (egress, schema,
-  transport, broker, orchestrator) encode the contracts as stubs. NOTE: they
-  predate the bundled `mojo-syntax` skill and still use removed `fn` syntax —
-  convert to `def` before wiring `build-full`.
+- **Whole graph compiles + runs.** All `src/` layers (egress, schema, transport,
+  broker, orchestrator, headgate) are converted to current Mojo syntax and
+  `pixi run build-full` builds `build/headgate`, which runs the full flow
+  end-to-end (layers above the sandbox are stubs returning empty; the sandbox is
+  real). The real behavior (flare transport, schema introspection, capability
+  shim) is where the TODOs are.
+- **Toolchain: pinned to `1.0.0b2.dev2026053106`** — the org/flare nightly.
+  flare's upstream deps (`json`, `mozz`) have no tags compatible with a newer
+  nightly, so the whole org is effectively pinned here; headgate matches so
+  `-I ../flare` resolves against the same toolchain.
 - **Mojo conventions:** `.agents/skills/mojo-syntax` (copied from `mojo-backend`)
   is the source of truth for current Mojo syntax — follow it over pretrained
-  knowledge (this nightly removed `fn`, `alias`, and String slicing).
+  knowledge.

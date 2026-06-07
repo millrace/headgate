@@ -3,8 +3,10 @@ name = "headgate"
 version = "0.0.1"
 authors = ["Marius S <marius@seritan.net>"]
 description = "Privacy harness: a frontier model writes code that runs on private data locally; the data never leaves the machine. See README.md / PRIOR-ART.md."
-# Nightly Mojo, matching the rest of the millrace org. flare (HTTP transport) and
-# minja2 (templating) are sibling repos, pulled in via `-I` (see [tasks]).
+# Nightly Mojo, PINNED to the org/flare nightly. flare's upstream deps (json, mozz)
+# have no tags compatible with a newer nightly, so the whole millrace org is
+# effectively pinned here; headgate matches so `-I ../flare` (HTTP transport) and
+# `-I ../minja2/src` (templating) resolve against the same toolchain. See PRIOR-ART.md.
 channels = [
     "https://conda.modular.com/max-nightly",
     "conda-forge",
@@ -12,7 +14,7 @@ channels = [
 platforms = ["osx-arm64"]
 
 [dependencies]
-mojo = "*"
+mojo = "==1.0.0b2.dev2026053106"
 
 [tasks]
 # The verified containment boundary (SPIKE.md). Pure shell + sandbox-exec — needs
@@ -25,7 +27,8 @@ spike = "./sandbox/spike.sh"
 build        = { cmd = "mkdir -p build && mojo build src/sandbox_demo.mojo -o build/sandbox-demo" }
 sandbox-demo = { cmd = "mkdir -p build && mojo build src/sandbox_demo.mojo -o build/sandbox-demo && ./build/sandbox-demo" }
 
-# Full composition root (src/headgate.mojo) — still scaffold; builds once the
-# transport layer is wired to flare. -I ../flare: HTTP for remote + local models;
-# -I ../minja2/src: JSON + prompt templating.
+# Full composition root (src/headgate.mojo) — the whole pi-shaped layer graph now
+# COMPILES + runs (layers above the sandbox are stubs returning empty; the sandbox
+# is real). -I ../flare reserved for when transport is wired (flare not imported
+# yet); -I ../minja2/src: JSON + prompt templating.
 build-full = { cmd = "mkdir -p build && mojo build src/headgate.mojo -I ../flare -I ../minja2/src -o build/headgate" }

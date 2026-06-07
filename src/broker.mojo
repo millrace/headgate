@@ -14,38 +14,31 @@ Keep this list minimal and capability-based — every entry is attack surface.
 struct Result(Movable):
     var json: String   # the code's output, written to the sandbox scratch dir
 
-    fn __init__(out self, owned json: String):
+    def __init__(out self, var json: String):
         self.json = json^
-
-
-trait Capability:
-    """A single allowlisted operation. The declared set must be a subset of the
-    sandbox policy's allowed tools, or the run is rejected before it starts."""
-    fn name(self) -> String:
-        ...
 
 
 struct CapabilityBroker(Movable):
     var allowed: List[String]   # e.g. ["read_table", "write_result", "log"]
 
-    fn __init__(out self, owned allowed: List[String]):
+    def __init__(out self, var allowed: List[String]):
         self.allowed = allowed^
 
-    fn permits(self, tool: String) -> Bool:
-        for ref a in self.allowed:
+    def permits(self, tool: String) -> Bool:
+        for a in self.allowed:
             if a == tool:
                 return True
         return False
 
     # The concrete capabilities (stubs — executed by the in-sandbox shim):
-    fn read_table(self, name: String, columns: List[String]) raises -> String:
+    def read_table(self, name: String, columns: List[String]) raises -> String:
         """Read scoped private data (read-only mount). TODO."""
         return String("")  # TODO
 
-    fn write_result(self, r: Result) raises:
+    def write_result(self, r: Result) raises:
         """Write to the scratch dir — the only writable path. TODO."""
         pass  # TODO
 
-    fn log(self, msg: String):
+    def log(self, msg: String):
         """Captured locally; scrubbed by the EgressGuard before any reuse. TODO."""
         pass  # TODO
