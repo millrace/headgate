@@ -1,21 +1,20 @@
 """Orchestrator — headgate's core loop (pi's `pi-agent-core` equivalent).
 
-Wires the layers into the privacy flow from README.md. The key structural choice
-that makes confidentiality cheap: a TWO-RUN design.
+Wires the layers into the privacy flow (README.md). v1 thin slice = a single
+non-iterating pass:
 
   1. SchemaSanitizer derives an aliased schema + synthetic samples (no real data).
-  2. DEBUG LOOP, against SYNTHETIC data: ask the RemoteClient to write code; run
-     it in the Sandbox over synthetic data; feed back scrubbed errors; iterate.
-     Feedback can be generous here — there is no real data to leak.
-  3. FINAL RUN, against REAL data: run the converged code once in the Sandbox.
-     Its output stays LOCAL and never loops back to the remote model.
-  4. The LocalClient (on-device model) summarizes the local result for the user.
+  2. RemoteClient.codegen writes code from that (every outbound message passes the
+     EgressGuard — confidentiality enforced here).
+  3. dealias the code (aliases -> real names) and inject the real CSV path, locally.
+  4. compile + run the program in the Sandbox over REAL data; output stays local.
 
-The remote model is a code generator, never a live agent over the data — so there
-is no tool-result feedback loop carrying real data upstream (per our design check).
+TODO (#5b): the synthetic-debug loop (iterate codegen<->run on synthetic data,
+feeding scrubbed errors back) and LocalClient summarization of the result. v1
+returns the raw computed result.
 """
 
-from schema import SchemaSanitizer, SanitizedSchema
+from schema import SchemaSanitizer, csv_path_for, inject_data_path
 from transport import LocalClient, RemoteClient, ChatMessage
 from sandbox import Sandbox
 from broker import CapabilityBroker
@@ -27,7 +26,6 @@ struct Orchestrator(Movable):
     var sanitizer: SchemaSanitizer
     var sandbox: Sandbox
     var broker: CapabilityBroker
-    var max_debug_iters: Int
 
     def __init__(
         out self,
@@ -42,42 +40,27 @@ struct Orchestrator(Movable):
         self.sanitizer = sanitizer^
         self.sandbox = sandbox^
         self.broker = broker^
-        self.max_debug_iters = 5
 
     def run_task(self, intent: String, data_dir: String) raises -> String:
-        """Execute one privacy-preserving task end to end."""
+        """Execute one privacy-preserving task end to end (single pass)."""
         # 1. Sanitize: aliased schema + synthetic samples (no real data/names).
         var schema = self.sanitizer.sanitize(data_dir)
 
-        # 2. Debug loop against SYNTHETIC data — remote writes code, sandbox runs
-        #    it on fakes, scrubbed errors feed back. (RemoteClient.codegen runs
-        #    every outbound message through the EgressGuard.)
-        var code = self._debug_loop(intent, schema)
-
-        # 3. Final run against REAL data; output stays local.
-        var deal = schema.dealias_code(code)        # aliases -> real names, locally
-        var real = self.sandbox.run(deal, List[String]())
-
-        # 4. Local model summarizes the local result for the user.
+        # 2. Codegen — outbound messages carry only the aliased schema + fakes, and
+        #    each is run through the EgressGuard inside codegen().
         var msgs = List[ChatMessage]()
-        msgs.append(ChatMessage(String("system"), String("Summarize the result.")))
-        msgs.append(ChatMessage(String("user"), real.output.copy()))
-        return self.local.chat(msgs)
+        msgs.append(ChatMessage(String("system"),
+            String("Write a Mojo program that reads the CSV at __DATA_CSV__ and"
+                   " prints the result. Refer to columns by their aliases.")))
+        msgs.append(ChatMessage(String("user"),
+            intent + String("\nschema=") + schema.aliased_json()
+                   + String("\nsamples=") + schema.synthetic_samples(3)))
+        var code = self.remote.codegen(msgs)
 
-    def _debug_loop(self, intent: String, schema: SanitizedSchema) raises -> String:
-        """Iterate codegen <-> synthetic run until it passes or we give up."""
-        var i = 0
-        var code = String("")
-        while i < self.max_debug_iters:
-            var msgs = List[ChatMessage]()
-            msgs.append(ChatMessage(String("system"),
-                String("You write Mojo over a table; you NEVER see real data.")))
-            msgs.append(ChatMessage(String("user"),
-                intent + String("\nschema=") + schema.aliased_json()
-                       + String("\nsamples=") + schema.synthetic_samples(3)))
-            code = self.remote.codegen(msgs)              # guarded outbound
-            var r = self.sandbox.run(code, List[String]())  # synthetic run
-            if r.exit_code == 0:
-                break
-            i += 1
-        return code
+        # 3. Map aliases back to real names, inject the real CSV path — LOCALLY.
+        var deal = schema.dealias_code(code)
+        var prog = inject_data_path(deal, csv_path_for(data_dir))
+
+        # 4. Compile + run in the sandbox over REAL data; result stays local.
+        var result = self.sandbox.compile_and_run(prog, List[String]())
+        return result.output.copy()

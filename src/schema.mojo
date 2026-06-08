@@ -85,6 +85,18 @@ def _replace_all(s: String, old: String, new: String) raises -> String:
     return out
 
 
+def csv_path_for(data_dir: String) raises -> String:
+    """The CSV path the sanitizer used — so the orchestrator can point generated
+    code at the real data file."""
+    return _find_csv(data_dir)
+
+
+def inject_data_path(code: String, csv_path: String) raises -> String:
+    """Replace the data placeholder in generated code with the real CSV path,
+    locally, just before compilation. Generated programs read `__DATA_CSV__`."""
+    return _replace_all(code, String("__DATA_CSV__"), csv_path)
+
+
 def fingerprints_from_csv(data_dir: String, min_len: Int = 4) raises -> List[String]:
     """Collect real-data spans (cell VALUES) to feed the EgressGuard. The header
     row is skipped on purpose: real column names are aliased away by the sanitizer

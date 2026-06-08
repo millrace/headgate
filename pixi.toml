@@ -40,6 +40,11 @@ egress-test  = { cmd = "mkdir -p build && mojo build src/egress_test.mojo -o bui
 # (reads $HOME) is contained.
 pipeline-demo = { cmd = "mkdir -p build && mojo build src/pipeline_demo.mojo -o build/pipeline-demo && ./build/pipeline-demo" }
 
+# FULL THIN SLICE end to end (mock model): sanitize CSV -> guarded codegen (mock)
+# -> dealias + inject path -> compile + run in sandbox -> print the result. Run
+# under pixi so CONDA_PREFIX/PATH are set for the in-process compile step.
+e2e-demo = { cmd = "mkdir -p demo/data demo/scratch build && printf 'name,age\\nalice,30\\nbob,25\\ncarol,41\\n' > demo/data/records.csv && mojo build src/headgate.mojo -o build/headgate && HEADGATE_MOCK=1 ./build/headgate; rm -rf demo" }
+
 # Full composition root (src/headgate.mojo) — the whole pi-shaped layer graph now
 # COMPILES + runs (layers above the sandbox are stubs returning empty; the sandbox
 # is real). -I ../flare reserved for when transport is wired (flare not imported

@@ -160,7 +160,11 @@ struct Sandbox(Movable):
         var build_out = scratch_c + "/build.out"
         _write(src_path, source)
 
-        var build_cmd = String("mojo build '") + src_path + "' -o '" + bin_path
+        # Absolute mojo path: the harness may be launched without pixi's PATH
+        # activation (e.g. ./build/headgate), so don't rely on `mojo` being on PATH.
+        var prefix = getenv("CONDA_PREFIX", "")
+        var mojo_bin = (prefix + "/bin/mojo") if prefix != "" else String("mojo")
+        var build_cmd = String("'") + mojo_bin + "' build '" + src_path + "' -o '" + bin_path
         build_cmd += String("' > '") + build_out + "' 2>&1"
         var brc = _shell(build_cmd)
         if brc != 0:
