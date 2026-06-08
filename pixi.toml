@@ -64,6 +64,14 @@ pipeline-demo = { cmd = "mkdir -p build && mojo build src/pipeline_demo.mojo -o 
 # under pixi so CONDA_PREFIX/PATH are set for the in-process compile step.
 e2e-demo = { cmd = "mkdir -p demo/data demo/scratch build && printf 'name,age\\nalice,30\\nbob,25\\ncarol,41\\n' > demo/data/records.csv && mojo build src/headgate.mojo -I ../flare -I ../json -I ../minja2/src -o build/headgate && HEADGATE_MOCK=1 ./build/headgate; rm -rf demo", depends-on = ["flare-ffi"] }
 
+# Unit-test the remote-API token Budget (offline).
+budget-test = { cmd = "mkdir -p build && mojo build src/budget_test.mojo -o build/budget-test && ./build/budget-test" }
+
+# Verify the budget-depleted -> LOCAL routing: HEADGATE_REMOTE_TOKEN_BUDGET=0 forces
+# codegen to the local model (a canned server returning a valid Mojo program), which
+# then compiles + runs -> ROW_COUNT= 3. Proves routing without a real remote call.
+budget-route-demo = { cmd = "mkdir -p demo/data demo/scratch build && printf 'name,age\\nalice,30\\nbob,25\\ncarol,41\\n' > demo/data/records.csv && python3 scripts/local_codegen_server.py & SRV=$!; sleep 1; mojo build src/headgate.mojo -I ../flare -I ../json -I ../minja2/src -o build/headgate && HEADGATE_REMOTE_TOKEN_BUDGET=0 HEADGATE_LOCAL_URL=http://127.0.0.1:8799 ./build/headgate; R=$?; kill $SRV 2>/dev/null; rm -rf demo; exit $R", depends-on = ["flare-ffi"] }
+
 # Full composition root (src/headgate.mojo). transport.mojo now imports flare's
 # HttpClient + json, so this needs -I ../flare -I ../json and the flare FFI shims.
 build-full = { cmd = "mkdir -p build && mojo build src/headgate.mojo -I ../flare -I ../json -I ../minja2/src -o build/headgate", depends-on = ["flare-ffi"] }

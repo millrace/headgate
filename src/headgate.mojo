@@ -20,6 +20,7 @@ where the real behavior goes next.
 """
 
 from std.os import getenv
+from budget import Budget, parse_budget
 from egress import EgressGuard
 from schema import SchemaSanitizer, fingerprints_from_csv
 from transport import LocalClient, RemoteClient
@@ -54,7 +55,12 @@ def main() raises:
     allowed.append(String("log"))
     var broker = CapabilityBroker(allowed^)
 
-    var orch = Orchestrator(local^, remote^, SchemaSanitizer(), sandbox^, broker^)
+    # Remote-API token budget: when depleted, codegen + fixes route to the local
+    # model. HEADGATE_REMOTE_TOKEN_BUDGET: unset/-1 = unlimited, 0 = always-local,
+    # N>0 = N tokens then local.
+    var budget = Budget(parse_budget(getenv("HEADGATE_REMOTE_TOKEN_BUDGET", "-1")))
+
+    var orch = Orchestrator(local^, remote^, SchemaSanitizer(), sandbox^, broker^, budget^)
 
     var answer = orch.run_task(
         String("Count rows grouped by category."),

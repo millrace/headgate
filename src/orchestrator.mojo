@@ -15,6 +15,7 @@ returns the raw computed result.
 """
 
 from std.os import getenv
+from budget import Budget
 from schema import SchemaSanitizer, csv_path_for, inject_data_path
 from transport import LocalClient, RemoteClient, ChatMessage
 from sandbox import Sandbox
@@ -27,7 +28,8 @@ struct Orchestrator(Movable):
     var sanitizer: SchemaSanitizer
     var sandbox: Sandbox
     var broker: CapabilityBroker
-    var max_fix_attempts: Int   # compile-feedback retries before giving up
+    var budget: Budget          # remote-API token budget; routes to local when depleted
+    var max_fix_attempts: Int   # compile/runtime-feedback retries before giving up
 
     def __init__(
         out self,
@@ -36,15 +38,35 @@ struct Orchestrator(Movable):
         var sanitizer: SchemaSanitizer,
         var sandbox: Sandbox,
         var broker: CapabilityBroker,
+        var budget: Budget,
     ):
         self.local = local^
         self.remote = remote^
         self.sanitizer = sanitizer^
         self.sandbox = sandbox^
         self.broker = broker^
+        self.budget = budget^
         self.max_fix_attempts = 3
 
-    def run_task(self, intent: String, data_dir: String) raises -> String:
+    def _codegen(mut self, messages: List[ChatMessage]) raises -> String:
+        """Route code generation: the remote frontier model while budget remains,
+        else the LOCAL model (trusted + free). Charges the budget by the remote
+        token cost."""
+        if self.budget.depleted():
+            return self.local.codegen(messages)
+        var g = self.remote.codegen(messages)
+        self.budget.charge(g.tokens)
+        return g.code.copy()
+
+    def _fix(mut self, code: String, errors: String) raises -> String:
+        """Route a fix the same way — remote while budget remains, else local."""
+        if self.budget.depleted():
+            return self.local.fix_code(code, errors)
+        var g = self.remote.fix_code(code, errors)
+        self.budget.charge(g.tokens)
+        return g.code.copy()
+
+    def run_task(mut self, intent: String, data_dir: String) raises -> String:
         """Execute one privacy-preserving task end to end (single pass)."""
         # 1. Sanitize: aliased schema + synthetic samples (no real data/names).
         var schema = self.sanitizer.sanitize(data_dir)
@@ -58,7 +80,7 @@ struct Orchestrator(Movable):
         msgs.append(ChatMessage(String("user"),
             intent + String("\nschema=") + schema.aliased_json()
                    + String("\nsamples=") + schema.synthetic_samples(3)))
-        var code = self.remote.codegen(msgs)
+        var code = self._codegen(msgs)
 
         # 3. Feedback loop on SYNTHETIC data: compile AND run the aliased code
         #    against a synthetic CSV (aliased headers col_0…, fake values), and on
@@ -74,7 +96,7 @@ struct Orchestrator(Movable):
                 inject_data_path(code, syn_csv), List[String]())
             if r.exit_code == 0:
                 break
-            code = self.remote.fix_code(code, r.output)   # guarded; aliased in/out
+            code = self._fix(code, r.output)   # budget-routed; guarded; aliased in/out
             attempt += 1
 
         # 4. Validated -> map aliases back to real names + inject the real CSV path

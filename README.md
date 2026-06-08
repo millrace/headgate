@@ -142,6 +142,12 @@ Early, but past "just a doc":
   runtime-verified — `pixi run local-probe` → `LOCAL HTTP OK`. `RemoteClient`
   (Anthropic Messages API, HTTPS) compiles; runtime needs `ANTHROPIC_API_KEY`.
   flare's FFI shims are built into this env by the `flare-ffi` task.
+- **Remote-API budget with local fallback.** `HEADGATE_REMOTE_TOKEN_BUDGET` caps
+  spend on the frontier model (tokens charged from the API's `usage`); once
+  depleted, codegen **and** compile/runtime fixes route to the LOCAL model
+  (trusted + free, lower quality) instead of failing. `-1`/unset = unlimited,
+  `0` = always-local, `N` = N tokens then local. `pixi run budget-test` (unit) +
+  `pixi run budget-route-demo` (budget=0 → local codegen → `ROW_COUNT= 3`).
 - **Toolchain: pinned to `1.0.0b2.dev2026060706`** — the org nightly. The
   flare + json sibling forks are ported to it (json CPU-only; mozz disabled), so
   `-I ../flare -I ../json` resolve against the same toolchain.

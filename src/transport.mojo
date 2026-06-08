@@ -143,6 +143,38 @@ struct LocalClient(Movable):
         var resp = client.send(req)
         return resp.json()["choices"][0]["message"]["content"].string_value()
 
+    def codegen(self, messages: List[ChatMessage]) raises -> String:
+        """Local model AS code generator — used when the remote budget is depleted.
+        Trusted + free; no egress guard. Prepends the current-Mojo system prompt so
+        the local model writes valid Mojo; strips code fences."""
+        var msgs = List[ChatMessage]()
+        msgs.append(ChatMessage(String("system"), _codegen_system()))
+        for m in messages:
+            msgs.append(ChatMessage(m.role.copy(), m.content.copy()))
+        return _strip_fences(self.chat(msgs))
+
+    def fix_code(self, code: String, errors: String) raises -> String:
+        """Local model fixes failing code — used when the remote budget is depleted."""
+        var prompt = String(
+            "The Mojo program below FAILED. Fix it and output ONLY the corrected,"
+            " complete Mojo program.\n\nERRORS:\n"
+        ) + errors + "\n\nPROGRAM:\n" + code
+        var msgs = List[ChatMessage]()
+        msgs.append(ChatMessage(String("system"), _codegen_system()))
+        msgs.append(ChatMessage(String("user"), prompt))
+        return _strip_fences(self.chat(msgs))
+
+
+struct Generated(Movable):
+    """A code-generation result: the code + the token cost (from the remote API's
+    usage; 0 for mock). The orchestrator charges the Budget by `tokens`."""
+    var code: String
+    var tokens: Int
+
+    def __init__(out self, var code: String, tokens: Int):
+        self.code = code^
+        self.tokens = tokens
+
 
 struct RemoteClient(Movable):
     """Frontier model (Anthropic Messages API, HTTPS). The guard gates the outbound
@@ -156,9 +188,9 @@ struct RemoteClient(Movable):
         self.api_key = api_key^
         self.guard = guard^
 
-    def codegen(self, messages: List[ChatMessage]) raises -> String:
-        """Each message must clear the EgressGuard first (fails closed). Returns
-        generated code (fences stripped). MOCK unless a real key is present."""
+    def codegen(self, messages: List[ChatMessage]) raises -> Generated:
+        """Each message must clear the EgressGuard first (fails closed). Returns the
+        generated code + token cost. MOCK unless a real key is present."""
         var prompt = String("")
         for m in messages:
             var checked = self.guard.check(m.content)   # raises -> aborts send
@@ -166,26 +198,26 @@ struct RemoteClient(Movable):
 
         var key = getenv("ANTHROPIC_API_KEY", "")
         if getenv("HEADGATE_MOCK", "") != "" or key == "":
-            return _mock_program()
+            return Generated(_mock_program(), prompt.byte_length() // 4 + 300)
         return self._anthropic(prompt, key)
 
-    def fix_code(self, code: String, errors: String) raises -> String:
-        """Ask the remote model to fix code that failed to compile. Operates ONLY
-        on ALIASED code + aliased compiler errors (no real data/names) — still
+    def fix_code(self, code: String, errors: String) raises -> Generated:
+        """Ask the remote model to fix code that failed (compile or runtime).
+        Operates ONLY on ALIASED code + aliased errors (no real data/names) — still
         routed through the EgressGuard (fails closed). Offline (mock / no key):
-        returns the code unchanged."""
+        returns the code unchanged at 0 cost."""
         var prompt = String(
-            "The Mojo program below FAILED to compile. Fix it and output ONLY the"
-            " corrected, complete Mojo program.\n\nCOMPILER ERRORS:\n"
+            "The Mojo program below FAILED. Fix it and output ONLY the corrected,"
+            " complete Mojo program.\n\nERRORS:\n"
         )
         prompt += errors + "\n\nPROGRAM:\n" + code
         var checked = self.guard.check(prompt)   # raises -> aborts the send
         var key = getenv("ANTHROPIC_API_KEY", "")
         if getenv("HEADGATE_MOCK", "") != "" or key == "":
-            return code
+            return Generated(code.copy(), 0)
         return self._anthropic(checked, key)
 
-    def _anthropic(self, prompt: String, key: String) raises -> String:
+    def _anthropic(self, prompt: String, key: String) raises -> Generated:
         var sys = _codegen_system()
         var model = getenv("HEADGATE_MODEL", "claude-sonnet-4-6")
         var body = String('{"model":"') + model + '","max_tokens":2048,'
@@ -202,4 +234,12 @@ struct RemoteClient(Movable):
         req.headers.set("content-type", "application/json")
         var client = HttpClient()
         var resp = client.send(req)
-        return _strip_fences(resp.json()["content"][0]["text"].string_value())
+        var v = resp.json()
+        var code = _strip_fences(v["content"][0]["text"].string_value())
+        var toks: Int
+        try:
+            toks = Int(v["usage"]["input_tokens"].int_value()) + Int(
+                v["usage"]["output_tokens"].int_value())
+        except:
+            toks = 0
+        return Generated(code^, toks)
