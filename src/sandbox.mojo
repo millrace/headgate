@@ -14,10 +14,12 @@ Per pi's thesis (PRIOR-ART.md): isolation lives OUTSIDE the agent, at the OS
 level. The harness owns confidentiality; this sandbox owns containment.
 
 Implementation notes / honest TODOs:
-- Exec uses `system(3)` (i.e. `/bin/sh -c`) with the sandboxed command's output
-  redirected to a file in scratch, which we then read back. This gives exit code
-  + captured output with zero extra FFI. Hardening follow-up: `posix_spawn` with
-  an explicit argv + a pipe, to drop the shell and avoid any quoting surface.
+- Exec uses `posix_spawn(2)` with an explicit argv vector and a
+  `posix_spawn_file_actions_t` that redirects the child's stdout AND stderr to a
+  file in scratch, which we then read back. No `/bin/sh`, no shell string, no
+  quoting surface — argv entries are passed verbatim to `sandbox-exec`. This
+  gives exit code + captured output. (Earlier this used `system(3)`; the shell
+  was dropped to remove the quoting attack surface.)
 - macOS only. Linux needs the Landlock+seccomp equivalent behind this same API.
 """
 
@@ -26,12 +28,136 @@ from std.memory import UnsafePointer, stack_allocation
 from std.os import getenv
 
 
-# ── small libc helpers ───────────────────────────────────────────────────────
+# ── posix_spawn-based exec ────────────────────────────────────────────────────
+#
+# macOS open(2) flags (sys/fcntl.h). Used by posix_spawn_file_actions_addopen to
+# create/truncate the capture file and point the child's fd 1/2 at it.
+comptime _O_WRONLY: c_int = 0x0001
+comptime _O_CREAT: c_int = 0x0200
+comptime _O_TRUNC: c_int = 0x0400
+comptime _OUT_MODE: c_int = 0o644  # rw-r--r-- for the capture file
 
-def _shell(var cmd: String) -> Int:
-    """Run `cmd` via system(3); return the child's exit code (WEXITSTATUS)."""
-    var status = Int(external_call["system", c_int](cmd.as_c_string_slice()))
-    return (status >> 8) & 0xFF
+# A NULL `char*` / `void*` — argv terminator, attrp, etc.
+comptime _NULL_CHARP = UnsafePointer[c_char, MutExternalOrigin](
+    unsafe_from_address=Int(0)
+)
+comptime _NULL_VOIDP = UnsafePointer[NoneType, MutExternalOrigin](
+    unsafe_from_address=Int(0)
+)
+
+
+def _cstr(s: String) -> UnsafePointer[c_char, MutExternalOrigin]:
+    """malloc a NUL-terminated C copy of `s`. Caller owns it — `_free_cstr`."""
+    var n = s.byte_length()
+    var p = alloc[c_char](n + 1)
+    var sp = s.unsafe_ptr()  # UnsafePointer[UInt8]
+    for i in range(n):
+        (p + i).init_pointee_copy(c_char(Int(sp[i])))
+    (p + n).init_pointee_copy(c_char(0))
+    return p
+
+
+def _environ() -> UnsafePointer[
+    UnsafePointer[c_char, MutExternalOrigin], MutExternalOrigin
+]:
+    """The process `environ` (`char**`). On macOS the global isn't directly
+    linkable, so go through `_NSGetEnviron()` which returns `char***`; deref
+    once. Passing this (NOT NULL) is MANDATORY: compile() relies on the child
+    inheriting PATH / CONDA_PREFIX to find its toolchain + dylibs."""
+    var pp = external_call[
+        "_NSGetEnviron",
+        UnsafePointer[
+            UnsafePointer[
+                UnsafePointer[c_char, MutExternalOrigin], MutExternalOrigin
+            ],
+            MutExternalOrigin,
+        ],
+    ]()
+    return pp[]
+
+
+def _spawn_capture(argv: List[String], out_path: String) raises -> Int:
+    """Exec `argv` via posix_spawn with stdout+stderr redirected to `out_path`,
+    wait for it, and return the child's exit code (WEXITSTATUS).
+
+    `argv[0]` must be an absolute path (we use plain posix_spawn, not the
+    PATH-searching posix_spawnp). stdout AND stderr land in `out_path`
+    (O_WRONLY|O_CREAT|O_TRUNC, 0644) via posix_spawn_file_actions — this
+    replaces the shell's `> file 2>&1`. The real process environ is inherited.
+
+    Raises if argv is empty or any libc step (file_actions / spawn) fails. All
+    C resources (the argv string array + each string, the file_actions) are
+    freed before returning."""
+    var n = len(argv)
+    if n == 0:
+        raise Error("_spawn_capture: empty argv")
+
+    # Build NULL-terminated char** argv. Each entry is an owned C string.
+    var cargv = alloc[UnsafePointer[c_char, MutExternalOrigin]](n + 1)
+    for i in range(n):
+        (cargv + i).init_pointee_copy(_cstr(argv[i]))
+    (cargv + n).init_pointee_copy(_NULL_CHARP)
+
+    # file_actions: macOS posix_spawn_file_actions_t is a single opaque pointer
+    # (8 bytes); over-allocate to 64 bytes for forward safety. Open the capture
+    # file as fd 1 (stdout), then dup2 fd 1 -> fd 2 so stderr shares it.
+    var fa = stack_allocation[64, UInt8]()
+    for i in range(64):
+        fa[i] = 0
+    var path_c = _cstr(out_path)
+
+    var rc = external_call["posix_spawn_file_actions_init", c_int](
+        fa.bitcast[NoneType]()
+    )
+    if rc == 0:
+        rc = external_call["posix_spawn_file_actions_addopen", c_int](
+            fa.bitcast[NoneType](),
+            c_int(1),
+            path_c,
+            _O_WRONLY | _O_CREAT | _O_TRUNC,
+            _OUT_MODE,
+        )
+    if rc == 0:
+        rc = external_call["posix_spawn_file_actions_adddup2", c_int](
+            fa.bitcast[NoneType](), c_int(1), c_int(2)
+        )
+
+    var exit_code = -1
+    if rc == 0:
+        var pid_slot = stack_allocation[1, c_int]()
+        pid_slot[0] = 0
+        # argv[0] is absolute -> plain posix_spawn (no PATH search). envp is the
+        # inherited process environ (compile() needs PATH/CONDA_PREFIX).
+        var src = external_call["posix_spawn", c_int](
+            pid_slot.bitcast[NoneType](),
+            cargv[0],  # path == argv[0] (absolute)
+            fa.bitcast[NoneType](),
+            _NULL_VOIDP,  # attrp
+            cargv,
+            _environ(),
+        )
+        if src == 0:
+            var status_slot = stack_allocation[1, c_int]()
+            status_slot[0] = 0
+            _ = external_call["waitpid", c_int](
+                pid_slot[0], status_slot.bitcast[NoneType](), c_int(0)
+            )
+            exit_code = (Int(status_slot[0]) >> 8) & 0xFF
+        else:
+            rc = src
+
+    # Tear down C resources unconditionally.
+    _ = external_call["posix_spawn_file_actions_destroy", c_int](
+        fa.bitcast[NoneType]()
+    )
+    path_c.free()
+    for i in range(n):
+        cargv[i].free()
+    cargv.free()
+
+    if rc != 0:
+        raise Error("posix_spawn failed (rc=" + String(rc) + ")")
+    return exit_code
 
 
 def _canonical(var path: String) raises -> String:
@@ -149,18 +275,24 @@ struct Sandbox(Movable):
         """Run `binary args...` under sandbox-exec with the rendered headgate
         profile: network denied, writes confined to scratch, reads exclude $HOME.
 
-            sandbox-exec -f <rendered.sb> <binary> <args...>  > <out> 2>&1
+            sandbox-exec -f <rendered.sb> <binary> <args...>
+
+        Exec'd via posix_spawn (no shell); stdout+stderr captured to <out>.
         """
         var scratch_c = _canonical(self.policy.scratch_dir)
         var profile = self._render_profile(scratch_c)
         var outfile = scratch_c + "/run.out"
 
-        var cmd = String("sandbox-exec -f '") + profile + "' '" + binary + "'"
+        var argv: List[String] = [
+            String("/usr/bin/sandbox-exec"),
+            String("-f"),
+            profile,
+            binary,
+        ]
         for i in range(len(args)):
-            cmd += String(" '") + args[i] + "'"
-        cmd += String(" > '") + outfile + "' 2>&1"
+            argv.append(args[i])
 
-        var code = _shell(cmd)
+        var code = _spawn_capture(argv, outfile)
         var out: String
         try:
             out = _read(outfile)
@@ -217,10 +349,19 @@ struct Sandbox(Movable):
         var mojo_bin = (prefix + "/bin/mojo") if prefix != "" else String("mojo")
         var profile = self._render_compile_profile(scratch_c, prefix)
 
-        var build_cmd = String("sandbox-exec -f '") + profile + "' '" + mojo_bin
-        build_cmd += String("' build '") + src_path + "' -o '" + bin_path
-        build_cmd += String("' > '") + build_out + "' 2>&1"
-        var brc = _shell(build_cmd)
+        # sandbox-exec -f <profile> <mojo> build <src> -o <bin>
+        # No shell: argv passed verbatim, stdout+stderr captured to build_out.
+        var build_argv: List[String] = [
+            String("/usr/bin/sandbox-exec"),
+            String("-f"),
+            profile,
+            mojo_bin,
+            String("build"),
+            src_path,
+            String("-o"),
+            bin_path,
+        ]
+        var brc = _spawn_capture(build_argv, build_out)
         if brc != 0:
             var berr: String
             try:
