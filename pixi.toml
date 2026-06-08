@@ -3,10 +3,10 @@ name = "headgate"
 version = "0.0.1"
 authors = ["Marius S <marius@seritan.net>"]
 description = "Privacy harness: a frontier model writes code that runs on private data locally; the data never leaves the machine. See README.md / PRIOR-ART.md."
-# Nightly Mojo, PINNED to the org/flare nightly. flare's upstream deps (json, mozz)
-# have no tags compatible with a newer nightly, so the whole millrace org is
-# effectively pinned here; headgate matches so `-I ../flare` (HTTP transport) and
-# `-I ../minja2/src` (templating) resolve against the same toolchain. See PRIOR-ART.md.
+# Nightly Mojo, pinned to the org nightly. flare + json forks are on this nightly
+# (json ported, mozz disabled), so headgate matches: `-I ../flare` (HTTP transport,
+# pulls `-I ../json` transitively) and `-I ../minja2/src` (templating) all resolve
+# against the same toolchain. See PRIOR-ART.md.
 channels = [
     "https://conda.modular.com/max-nightly",
     "conda-forge",
@@ -14,7 +14,7 @@ channels = [
 platforms = ["osx-arm64"]
 
 [dependencies]
-mojo = "==1.0.0b2.dev2026053106"
+mojo = "==1.0.0b2.dev2026060706"
 
 [tasks]
 # The verified containment boundary (SPIKE.md). Pure shell + sandbox-exec — needs
