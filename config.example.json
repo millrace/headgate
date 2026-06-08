@@ -1,0 +1,9 @@
+{
+  "local_url": "http://127.0.0.1:8000/v1",
+  "local_model": "Qwen2.5-0.5B-Instruct",
+  "remote_base_url": "https://api.anthropic.com/v1",
+  "remote_model": "claude-sonnet-4-6",
+  "remote_token_budget": 200000,
+  "mock": false,
+  "use_local_summary": false
+}

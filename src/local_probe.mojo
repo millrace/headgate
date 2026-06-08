@@ -10,7 +10,7 @@ from transport import LocalClient, ChatMessage
 
 
 def main() raises:
-    var c = LocalClient(String("http://127.0.0.1:8799"))
+    var c = LocalClient(String("http://127.0.0.1:8799"), String("local"))
     var msgs = List[ChatMessage]()
     msgs.append(ChatMessage(String("system"), String("be terse")))
     msgs.append(ChatMessage(String("user"), String("say hi")))

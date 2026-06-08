@@ -14,7 +14,6 @@ feeding scrubbed errors back) and LocalClient summarization of the result. v1
 returns the raw computed result.
 """
 
-from std.os import getenv
 from budget import Budget
 from schema import SchemaSanitizer, csv_path_for, inject_data_path
 from transport import LocalClient, RemoteClient, ChatMessage
@@ -28,8 +27,9 @@ struct Orchestrator(Movable):
     var sanitizer: SchemaSanitizer
     var sandbox: Sandbox
     var broker: CapabilityBroker
-    var budget: Budget          # remote-API token budget; routes to local when depleted
-    var max_fix_attempts: Int   # compile/runtime-feedback retries before giving up
+    var budget: Budget               # remote-API token budget; routes to local when depleted
+    var use_local_summary: Bool      # have the local model summarize the result
+    var max_fix_attempts: Int        # compile/runtime-feedback retries before giving up
 
     def __init__(
         out self,
@@ -39,6 +39,7 @@ struct Orchestrator(Movable):
         var sandbox: Sandbox,
         var broker: CapabilityBroker,
         var budget: Budget,
+        use_local_summary: Bool,
     ):
         self.local = local^
         self.remote = remote^
@@ -46,6 +47,7 @@ struct Orchestrator(Movable):
         self.sandbox = sandbox^
         self.broker = broker^
         self.budget = budget^
+        self.use_local_summary = use_local_summary
         self.max_fix_attempts = 3
 
     def _codegen(mut self, messages: List[ChatMessage]) raises -> String:
@@ -109,7 +111,7 @@ struct Orchestrator(Movable):
         #    inverse of the remote path: NO egress guard, because nothing leaves the
         #    machine. Opt-in via HEADGATE_LOCAL so offline runs (no inference-server)
         #    still work and just return the raw result.
-        if getenv("HEADGATE_LOCAL", "") == "":
+        if not self.use_local_summary:
             return result.output.copy()
         var summary = List[ChatMessage]()
         summary.append(ChatMessage(String("system"),

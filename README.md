@@ -154,3 +154,23 @@ Early, but past "just a doc":
 - **Mojo conventions:** `.agents/skills/mojo-syntax` (copied from `mojo-backend`)
   is the source of truth for current Mojo syntax — follow it over pretrained
   knowledge.
+
+## Configuration
+
+headgate reads `~/.config/headgate/config.json` (override the path with
+`HEADGATE_CONFIG`). It's parsed with the `json` fork (`src/settings.mojo`). All
+keys are optional; see [`config.example.json`](config.example.json):
+
+| key | default | env override |
+|---|---|---|
+| `local_url` | `http://127.0.0.1:8000/v1` | `HEADGATE_LOCAL_URL` |
+| `local_model` | `local` | `HEADGATE_LOCAL_MODEL` |
+| `remote_base_url` | `https://api.anthropic.com/v1` | `ANTHROPIC_BASE_URL` |
+| `remote_model` | `claude-sonnet-4-6` | `HEADGATE_MODEL` |
+| `remote_token_budget` | `-1` (unlimited) | `HEADGATE_REMOTE_TOKEN_BUDGET` |
+| `anthropic_api_key` | `""` | `ANTHROPIC_API_KEY` *(env preferred for secrets)* |
+| `mock` | `false` | `HEADGATE_MOCK` (set = true) |
+| `use_local_summary` | `false` | `HEADGATE_LOCAL` (set = true) |
+
+**Precedence: environment variable > config file > built-in default** — so
+existing env-based workflows are unchanged, and the file is just a default layer.

@@ -15,7 +15,6 @@ MOCK path: when ANTHROPIC_API_KEY is unset or HEADGATE_MOCK is set, codegen retu
 a canned program so the pipeline runs offline.
 """
 
-from std.os import getenv
 from flare.http import HttpClient, Request
 from egress import EgressGuard
 
@@ -117,15 +116,16 @@ struct ChatMessage(Movable, Copyable):
 struct LocalClient(Movable):
     """Local model via inference-server, OpenAI /chat/completions over plain HTTP."""
     var base_url: String   # e.g. http://127.0.0.1:8000/v1
+    var model: String
 
-    def __init__(out self, var base_url: String):
+    def __init__(out self, var base_url: String, var model: String):
         self.base_url = base_url^
+        self.model = model^
 
     def chat(self, messages: List[ChatMessage]) raises -> String:
         """POST the messages and return the assistant content. Local only — no
         egress guard. Requires inference-server running."""
-        var model = getenv("HEADGATE_LOCAL_MODEL", "local")
-        var body = String('{"model":"') + model + '","messages":['
+        var body = String('{"model":"') + self.model + '","messages":['
         for i in range(len(messages)):
             if i > 0:
                 body += ","
@@ -181,25 +181,28 @@ struct RemoteClient(Movable):
     path — enforced here, not left to callers, so it cannot be bypassed."""
     var base_url: String   # e.g. https://api.anthropic.com/v1
     var api_key: String
+    var model: String
+    var mock: Bool         # force the canned program (offline) instead of a real call
     var guard: EgressGuard
 
-    def __init__(out self, var base_url: String, var api_key: String, var guard: EgressGuard):
+    def __init__(out self, var base_url: String, var api_key: String, var model: String, mock: Bool, var guard: EgressGuard):
         self.base_url = base_url^
         self.api_key = api_key^
+        self.model = model^
+        self.mock = mock
         self.guard = guard^
 
     def codegen(self, messages: List[ChatMessage]) raises -> Generated:
         """Each message must clear the EgressGuard first (fails closed). Returns the
-        generated code + token cost. MOCK unless a real key is present."""
+        generated code + token cost. MOCK when configured or no key present."""
         var prompt = String("")
         for m in messages:
             var checked = self.guard.check(m.content)   # raises -> aborts send
             prompt += m.role + ": " + checked + "\n"
 
-        var key = getenv("ANTHROPIC_API_KEY", "")
-        if getenv("HEADGATE_MOCK", "") != "" or key == "":
+        if self.mock or self.api_key == "":
             return Generated(_mock_program(), prompt.byte_length() // 4 + 300)
-        return self._anthropic(prompt, key)
+        return self._anthropic(prompt)
 
     def fix_code(self, code: String, errors: String) raises -> Generated:
         """Ask the remote model to fix code that failed (compile or runtime).
@@ -212,15 +215,13 @@ struct RemoteClient(Movable):
         )
         prompt += errors + "\n\nPROGRAM:\n" + code
         var checked = self.guard.check(prompt)   # raises -> aborts the send
-        var key = getenv("ANTHROPIC_API_KEY", "")
-        if getenv("HEADGATE_MOCK", "") != "" or key == "":
+        if self.mock or self.api_key == "":
             return Generated(code.copy(), 0)
-        return self._anthropic(checked, key)
+        return self._anthropic(checked)
 
-    def _anthropic(self, prompt: String, key: String) raises -> Generated:
+    def _anthropic(self, prompt: String) raises -> Generated:
         var sys = _codegen_system()
-        var model = getenv("HEADGATE_MODEL", "claude-sonnet-4-6")
-        var body = String('{"model":"') + model + '","max_tokens":2048,'
+        var body = String('{"model":"') + self.model + '","max_tokens":2048,'
         body += '"system":"' + _json_escape(sys) + '",'
         body += '"messages":[{"role":"user","content":"' + _json_escape(prompt) + '"}]}'
 
@@ -229,7 +230,7 @@ struct RemoteClient(Movable):
             url=self.base_url + "/messages",
             body=List[UInt8](body.as_bytes()),
         )
-        req.headers.set("x-api-key", key)
+        req.headers.set("x-api-key", self.api_key)
         req.headers.set("anthropic-version", "2023-06-01")
         req.headers.set("content-type", "application/json")
         var client = HttpClient()

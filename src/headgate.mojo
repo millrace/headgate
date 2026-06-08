@@ -19,8 +19,8 @@ stubs — the TODOs (flare transport, schema introspection, capability shim) are
 where the real behavior goes next.
 """
 
-from std.os import getenv
-from budget import Budget, parse_budget
+from budget import Budget
+from settings import load_config
 from egress import EgressGuard
 from schema import SchemaSanitizer, fingerprints_from_csv
 from transport import LocalClient, RemoteClient
@@ -30,6 +30,8 @@ from orchestrator import Orchestrator
 
 
 def main() raises:
+    # Config: ~/.config/headgate/config.json (+ env overrides). See settings.mojo.
+    var cfg = load_config()
     var data_dir = String("./demo/data")
 
     # Confidentiality: build the guard from the real data — fingerprints of real
@@ -37,11 +39,10 @@ def main() raises:
     var guard = EgressGuard(fingerprints_from_csv(data_dir), List[String]())
 
     # Two models: local (on-device, sees real data) and remote (frontier, gated).
-    var local = LocalClient(getenv("HEADGATE_LOCAL_URL", "http://127.0.0.1:8000/v1"))
+    var local = LocalClient(cfg.local_url.copy(), cfg.local_model.copy())
     var remote = RemoteClient(
-        String("https://api.anthropic.com/v1"),  # remote frontier model
-        String(""),                              # API key from env (TODO)
-        guard^,
+        cfg.remote_base_url.copy(), cfg.api_key.copy(), cfg.remote_model.copy(),
+        cfg.mock, guard^,
     )
 
     # Containment: network-deny sandbox over the proven Seatbelt profile.
@@ -55,12 +56,12 @@ def main() raises:
     allowed.append(String("log"))
     var broker = CapabilityBroker(allowed^)
 
-    # Remote-API token budget: when depleted, codegen + fixes route to the local
-    # model. HEADGATE_REMOTE_TOKEN_BUDGET: unset/-1 = unlimited, 0 = always-local,
-    # N>0 = N tokens then local.
-    var budget = Budget(parse_budget(getenv("HEADGATE_REMOTE_TOKEN_BUDGET", "-1")))
+    # Remote-API token budget: when depleted, codegen + fixes route to the local model.
+    var budget = Budget(cfg.remote_token_budget)
 
-    var orch = Orchestrator(local^, remote^, SchemaSanitizer(), sandbox^, broker^, budget^)
+    var orch = Orchestrator(
+        local^, remote^, SchemaSanitizer(), sandbox^, broker^, budget^,
+        cfg.use_local_summary)
 
     var answer = orch.run_task(
         String("Count rows grouped by category."),
