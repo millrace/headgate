@@ -43,6 +43,15 @@ cp -R "$ROOT/scripts" "$H/scripts"
 cp "$ROOT/pixi.toml" "$H/pixi.toml"
 [[ -f "$ROOT/config.example.json" ]] && cp "$ROOT/config.example.json" "$H/"
 
+# Build + bundle the web UI (web/dist) so the headgate server can serve it at
+# http://localhost:10000 with no Node at runtime. Needs npm at PACKAGE time.
+if [[ -d "$ROOT/web" ]]; then
+    echo "==> building web UI (npm)" >&2
+    ( cd "$ROOT/web" && npm ci && npm run build ) >&2
+    mkdir -p "$H/web"
+    cp -R "$ROOT/web/dist" "$H/web/dist"
+fi
+
 echo "==> bundling flare FFI shims + deps (relocatable)" >&2
 # The four flare FFI shims + the conda dylibs they link (otool -L, non-system).
 SHIMS=(libflare_tls.so libflare_zlib.so libflare_brotli.so libflare_fs.so)

@@ -70,6 +70,35 @@ def _extract_message(body: String) -> String:
         return String("")
 
 
+def _content_type(path: String) -> String:
+    """Guess a Content-Type from the file extension (the few Vite emits)."""
+    if path.find(".js") != -1:
+        return String("application/javascript; charset=utf-8")
+    if path.find(".css") != -1:
+        return String("text/css; charset=utf-8")
+    if path.find(".svg") != -1:
+        return String("image/svg+xml")
+    if path.find(".html") != -1:
+        return String("text/html; charset=utf-8")
+    return String("application/octet-stream")
+
+
+def _serve_file(path: String, content_type: String) raises -> Response:
+    """Read a file under web/dist and return it (404 if missing)."""
+    var content: String
+    try:
+        with open(path, "r") as f:
+            content = f.read()
+    except:
+        return not_found(path)
+    var r = ok(content)
+    try:
+        r.headers.set("Content-Type", content_type)
+    except:
+        pass
+    return r^
+
+
 def _cors(var resp: Response) -> Response:
     """Allow the local web app (a different origin/port) to call this API."""
     try:
@@ -90,10 +119,19 @@ struct Api(Handler, Copyable, Movable):
         # CORS preflight (compare the raw method string — no Method.OPTIONS dep).
         if req.method == "OPTIONS":
             return _cors(Response(status=204, reason="No Content"))
-        if path == "/" or path == "/health":
-            return _cors(ok("headgate ok"))
         if req.method == Method.POST and path == "/chat":
             return self.handle_chat(req)
+        if path == "/health":
+            return _cors(ok("headgate ok"))
+        # Static web UI — same-origin in production (Vite serves it in dev).
+        # Reject path traversal before mapping under web/dist.
+        if path.find("..") == -1:
+            if path == "/" or path == "/index.html":
+                return _serve_file("web/dist/index.html", "text/html; charset=utf-8")
+            if path == "/favicon.svg":
+                return _serve_file("web/dist/favicon.svg", "image/svg+xml")
+            if path.find("/assets/") == 0:
+                return _serve_file("web/dist" + path, _content_type(path))
         return _cors(not_found(path))
 
     def handle_chat(self, req: Request) raises -> Response:

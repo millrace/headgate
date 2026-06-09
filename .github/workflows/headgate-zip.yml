@@ -40,6 +40,11 @@ jobs:
         with:
           manifest-path: headgate/pixi.toml
 
+      # Node for the web UI build (package_headgate.sh runs `npm ci && npm run build`).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Build flare FFI shims (libflare_tls/zlib/brotli/fs)
         working-directory: headgate
         run: pixi run flare-ffi
