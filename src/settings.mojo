@@ -30,6 +30,7 @@ struct Config(Movable):
     var api_key: String
     var mock: Bool
     var use_local_summary: Bool
+    var data_dir: String
 
     def __init__(
         out self,
@@ -41,6 +42,7 @@ struct Config(Movable):
         var api_key: String,
         mock: Bool,
         use_local_summary: Bool,
+        var data_dir: String,
     ):
         self.local_url = local_url^
         self.local_model = local_model^
@@ -50,6 +52,7 @@ struct Config(Movable):
         self.api_key = api_key^
         self.mock = mock
         self.use_local_summary = use_local_summary
+        self.data_dir = data_dir^
 
 
 def _read(path: String) raises -> String:
@@ -77,6 +80,7 @@ def load_config() -> Config:
     var api_key = String("")
     var mock = False
     var use_local_summary = False
+    var data_dir = String("")  # empty -> resolved to the default dir below
 
     # 2. config file overrides defaults (best-effort: missing/bad file -> defaults)
     try:
@@ -97,6 +101,8 @@ def load_config() -> Config:
         except: pass
         try: use_local_summary = j["use_local_summary"].bool_value()
         except: pass
+        try: data_dir = j["data_dir"].string_value()
+        except: pass
     except:
         pass
 
@@ -112,6 +118,12 @@ def load_config() -> Config:
         mock = True
     if getenv("HEADGATE_LOCAL", "") != "":
         use_local_summary = True
+    data_dir = _env_or("HEADGATE_DATA", data_dir^)
+
+    # empty data_dir -> the default under ~/.config/headgate (created/asked for at
+    # first run by headgate.mojo). Kept here so the key is overridable everywhere.
+    if data_dir == "":
+        data_dir = getenv("HOME", "") + "/.config/headgate/data"
 
     # 4. no API key -> no remote access: start with a zero budget so all codegen
     # routes to the local model (graceful local-only mode rather than failing on
@@ -120,4 +132,4 @@ def load_config() -> Config:
         token_budget = 0
 
     return Config(local_url^, local_model^, remote_base_url^, remote_model^,
-                  token_budget, api_key^, mock, use_local_summary)
+                  token_budget, api_key^, mock, use_local_summary, data_dir^)
