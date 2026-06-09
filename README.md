@@ -112,7 +112,8 @@ src/schema.mojo                       SchemaSanitizer — alias names + syntheti
 src/transport.mojo                    Local/Remote clients (remote gated by EgressGuard)
 src/sandbox.mojo + src/broker.mojo    containment runner + capability allowlist
 src/orchestrator.mojo                 core loop: synthetic-debug → real-run
-src/headgate.mojo                     composition root / demo
+src/headgate.mojo                     composition root / CLI + REPL
+web/                                  headgate for the web — local React chat UI
 ```
 
 ## Status
