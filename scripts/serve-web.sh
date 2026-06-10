@@ -47,14 +47,17 @@ if [ -n "$TS" ] && "$TS" status >/dev/null 2>&1; then
     fi
     TS_ATTEMPTED=1
     # Best-effort, in the background + time-bounded so it can NEVER block the
-    # server. `tailscale serve` may need a one-time GUI approval the first run.
+    # server. Expose over HTTP on the tailnet — carried over the encrypted
+    # WireGuard tunnel, tailnet-only (never LAN/public). HTTP (not HTTPS) so it
+    # works without enabling the Serve/HTTPS-certificates feature in the admin
+    # console (which otherwise blocks waiting for a one-time enable).
     (
-        if _with_timeout 10 "$TS" serve --bg --yes "$PORT" >/dev/null 2>&1; then
-            echo "tailnet:  exposed via 'tailscale serve' (HTTPS):" >&2
+        if _with_timeout 8 "$TS" serve --bg --yes --http="$PORT" "http://127.0.0.1:$PORT" >/dev/null 2>&1; then
+            echo "tailnet:  exposed via 'tailscale serve' (over the encrypted tailnet):" >&2
             "$TS" serve status 2>/dev/null | sed 's/^/  /' >&2
         else
-            echo "tailscale: 'serve' unavailable (needs approval, or HTTPS certs" >&2
-            echo "           disabled in the admin console) — serving localhost only." >&2
+            echo "tailscale: 'serve' unavailable (may need a one-time approval) —" >&2
+            echo "           serving localhost only." >&2
         fi
     ) &
 fi
