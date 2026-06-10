@@ -79,4 +79,4 @@ build-full = { cmd = "mkdir -p build && mojo build src/headgate.mojo -I ../flare
 # headgate over HTTP (src/server.mojo) — the local backend for web/. Same
 # orchestrator as the CLI, served on 127.0.0.1:10000 (POST /chat).
 build-server = { cmd = "mkdir -p build && mojo build src/server.mojo -I ../flare -I ../json -I ../minja2/src -o build/headgate-server", depends-on = ["flare-ffi"] }
-serve-web    = { cmd = "./build/headgate-server", depends-on = ["build-server"] }
+serve-web    = { cmd = "bash scripts/serve-web.sh", depends-on = ["build-server"] }
