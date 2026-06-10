@@ -105,7 +105,7 @@ through covert channels. That's a later, harder threat model.
 ```
 README.md / PRIOR-ART.md / SPIKE.md   design intent · prior-art survey · sandbox spike
 DOCUMENT-MODE.md                      design: arbitrary files (PDF/docx/…), not just CSV
-pixi.toml                             Mojo nightly + flare/minja2 wiring; `pixi run spike`
+pixi.toml                             Mojo nightly + flare/jinja2.mojo wiring; `pixi run spike`
 sandbox/headgate.sb.template          PROVEN Seatbelt confinement profile
 sandbox/spike.sh                      6/6-passing containment proof (no toolchain needed)
 src/egress.mojo                       EgressGuard — outbound confidentiality chokepoint

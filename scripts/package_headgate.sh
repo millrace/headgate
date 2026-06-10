@@ -11,10 +11,10 @@
 #                deps, all rpath-fixed to @loader_path}
 #   flare/flare/ vendored flare package (HTTP client + TLS)
 #   json/json/   vendored json package (response parsing)
-#   minja2/src/  vendored minja2 (JSON for config)
+#   jinja2.mojo/src/  vendored jinja2.mojo (JSON for config)
 #
 # so the app can run:
-#   (cd headgate && mojo build src/headgate.mojo -I ../flare -I ../json -I ../minja2/src -o build/headgate)
+#   (cd headgate && mojo build src/headgate.mojo -I ../flare -I ../json -I ../jinja2.mojo/src -o build/headgate)
 #
 # We ship the prebuilt flare FFI shims (building them needs clang + OpenSSL/zlib/
 # brotli) + their dylib deps, made relocatable via @loader_path so the binary finds
@@ -26,7 +26,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FLARE="${FLARE:-$ROOT/../flare}"
 JSON="${JSON:-$ROOT/../json}"
-MINJA2="${MINJA2:-$ROOT/../minja2}"
+JINJA2="${JINJA2:-$ROOT/../jinja2.mojo}"
 OUT="${1:-$ROOT/headgate.zip}"
 case "$OUT" in /*) ;; *) OUT="$(pwd)/$OUT" ;; esac   # zip runs from a temp dir — need absolute
 PREFIX="${CONDA_PREFIX:?run via pixi — need CONDA_PREFIX for the flare FFI shims + their deps}"
@@ -76,14 +76,14 @@ for f in "$H"/build/*.so "$H"/build/*.dylib; do
     codesign --force --sign - "$f" 2>/dev/null || true
 done
 
-echo "==> staging flare + json + minja2" >&2
-mkdir -p "$STAGE/flare" "$STAGE/json" "$STAGE/minja2"
+echo "==> staging flare + json + jinja2.mojo" >&2
+mkdir -p "$STAGE/flare" "$STAGE/json" "$STAGE/jinja2.mojo"
 cp -R "$FLARE/flare" "$STAGE/flare/flare"
 cp -R "$JSON/json" "$STAGE/json/json"
-cp -R "$MINJA2/src" "$STAGE/minja2/src"
+cp -R "$JINJA2/src" "$STAGE/jinja2.mojo/src"
 
 echo "==> zipping -> $OUT" >&2
 rm -f "$OUT"
-( cd "$STAGE" && zip -qr -X "$OUT" headgate flare json minja2 )
+( cd "$STAGE" && zip -qr -X "$OUT" headgate flare json jinja2.mojo )
 echo "==> done" >&2
 ls -lh "$OUT" >&2

@@ -5,7 +5,7 @@ authors = ["Marius S <marius@seritan.net>"]
 description = "Privacy harness: a frontier model writes code that runs on private data locally; the data never leaves the machine. See README.md / PRIOR-ART.md."
 # Nightly Mojo, pinned to the org nightly. flare + json forks are on this nightly
 # (json ported, mozz disabled), so headgate matches: `-I ../flare` (HTTP transport,
-# pulls `-I ../json` transitively) and `-I ../minja2/src` (templating) all resolve
+# pulls `-I ../json` transitively) and `-I ../jinja2.mojo/src` (templating) all resolve
 # against the same toolchain. See PRIOR-ART.md.
 channels = [
     "https://conda.modular.com/max-nightly",
@@ -62,7 +62,7 @@ pipeline-demo = { cmd = "mkdir -p build && mojo build src/pipeline_demo.mojo -o 
 # FULL THIN SLICE end to end (mock model): sanitize CSV -> guarded codegen (mock)
 # -> dealias + inject path -> compile + run in sandbox -> print the result. Run
 # under pixi so CONDA_PREFIX/PATH are set for the in-process compile step.
-e2e-demo = { cmd = "mkdir -p demo/data demo/scratch build && printf 'name,age\\nalice,30\\nbob,25\\ncarol,41\\n' > demo/data/records.csv && mojo build src/headgate.mojo -I ../flare -I ../json -I ../minja2/src -o build/headgate && HEADGATE_MOCK=1 ./build/headgate; rm -rf demo", depends-on = ["flare-ffi"] }
+e2e-demo = { cmd = "mkdir -p demo/data demo/scratch build && printf 'name,age\\nalice,30\\nbob,25\\ncarol,41\\n' > demo/data/records.csv && mojo build src/headgate.mojo -I ../flare -I ../json -I ../jinja2.mojo/src -o build/headgate && HEADGATE_MOCK=1 ./build/headgate; rm -rf demo", depends-on = ["flare-ffi"] }
 
 # Unit-test the remote-API token Budget (offline).
 budget-test = { cmd = "mkdir -p build && mojo build src/budget_test.mojo -o build/budget-test && ./build/budget-test" }
@@ -70,13 +70,13 @@ budget-test = { cmd = "mkdir -p build && mojo build src/budget_test.mojo -o buil
 # Verify the budget-depleted -> LOCAL routing: HEADGATE_REMOTE_TOKEN_BUDGET=0 forces
 # codegen to the local model (a canned server returning a valid Mojo program), which
 # then compiles + runs -> ROW_COUNT= 3. Proves routing without a real remote call.
-budget-route-demo = { cmd = "mkdir -p demo/data demo/scratch build && printf 'name,age\\nalice,30\\nbob,25\\ncarol,41\\n' > demo/data/records.csv && python3 scripts/local_codegen_server.py & SRV=$!; sleep 1; mojo build src/headgate.mojo -I ../flare -I ../json -I ../minja2/src -o build/headgate && HEADGATE_REMOTE_TOKEN_BUDGET=0 HEADGATE_LOCAL_URL=http://127.0.0.1:8799 ./build/headgate; R=$?; kill $SRV 2>/dev/null; rm -rf demo; exit $R", depends-on = ["flare-ffi"] }
+budget-route-demo = { cmd = "mkdir -p demo/data demo/scratch build && printf 'name,age\\nalice,30\\nbob,25\\ncarol,41\\n' > demo/data/records.csv && python3 scripts/local_codegen_server.py & SRV=$!; sleep 1; mojo build src/headgate.mojo -I ../flare -I ../json -I ../jinja2.mojo/src -o build/headgate && HEADGATE_REMOTE_TOKEN_BUDGET=0 HEADGATE_LOCAL_URL=http://127.0.0.1:8799 ./build/headgate; R=$?; kill $SRV 2>/dev/null; rm -rf demo; exit $R", depends-on = ["flare-ffi"] }
 
 # Full composition root (src/headgate.mojo). transport.mojo now imports flare's
 # HttpClient + json, so this needs -I ../flare -I ../json and the flare FFI shims.
-build-full = { cmd = "mkdir -p build && mojo build src/headgate.mojo -I ../flare -I ../json -I ../minja2/src -o build/headgate", depends-on = ["flare-ffi"] }
+build-full = { cmd = "mkdir -p build && mojo build src/headgate.mojo -I ../flare -I ../json -I ../jinja2.mojo/src -o build/headgate", depends-on = ["flare-ffi"] }
 
 # headgate over HTTP (src/server.mojo) — the local backend for web/. Same
 # orchestrator as the CLI, served on 127.0.0.1:10000 (POST /chat).
-build-server = { cmd = "mkdir -p build && mojo build src/server.mojo -I ../flare -I ../json -I ../minja2/src -o build/headgate-server", depends-on = ["flare-ffi"] }
+build-server = { cmd = "mkdir -p build && mojo build src/server.mojo -I ../flare -I ../json -I ../jinja2.mojo/src -o build/headgate-server", depends-on = ["flare-ffi"] }
 serve-web    = { cmd = "bash scripts/serve-web.sh", depends-on = ["build-server"] }
