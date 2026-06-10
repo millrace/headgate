@@ -19,7 +19,7 @@ jobs:
     runs-on: macos-14
     steps:
       # Lay the repos out as siblings, matching the dev layout the package script
-      # and the `-I ../flare -I ../json -I ../minja2/src` build assume.
+      # and the `-I ../flare -I ../json -I ../jinja2.mojo/src` build assume.
       - uses: actions/checkout@v6
         with:
           path: headgate
@@ -33,8 +33,8 @@ jobs:
           path: json
       - uses: actions/checkout@v6
         with:
-          repository: millrace/minja2
-          path: minja2
+          repository: millrace/jinja2.mojo
+          path: jinja2.mojo
 
       - uses: prefix-dev/setup-pixi@v0.9.6
         with:
