@@ -54,40 +54,18 @@ flare-probe = { cmd = "mkdir -p build && mojo build src/flare_probe.mojo -I ../f
 # Runtime-verify LocalClient's flare HTTP path against a canned OpenAI server.
 local-probe = { cmd = "mkdir -p build && python3 scripts/local_test_server.py & SRV=$!; sleep 1; mojo build src/local_probe.mojo -I ../flare -I ../json -o build/local-probe && ./build/local-probe; R=$?; kill $SRV 2>/dev/null; exit $R", depends-on = ["flare-ffi"] }
 
-# FIRST VERTICAL SLICE — compiles + runs today. Renders the Seatbelt profile and
-# execs under sandbox-exec from Mojo (src/sandbox.mojo), then verifies containment
-# (mirrors the spike, but Mojo-driven). This is what `pixi run build` produces.
-build        = { cmd = "mkdir -p build && mojo build src/sandbox_demo.mojo -o build/sandbox-demo" }
-sandbox-demo = { cmd = "mkdir -p build && mojo build src/sandbox_demo.mojo -o build/sandbox-demo && ./build/sandbox-demo" }
-
-# Offline check of the real CSV SchemaSanitizer (aliasing + type inference +
-# synthetic samples + dealias round-trip). No network/model needed.
-schema-demo  = { cmd = "mkdir -p build && mojo build src/schema_demo.mojo -o build/schema-demo && ./build/schema-demo" }
-
 # Proves the EgressGuard blocks real-data fingerprints + canary tokens while
 # letting clean payloads through (confidentiality is actually enforced).
 egress-test  = { cmd = "mkdir -p build && mojo build src/egress_test.mojo -o build/egress-test && ./build/egress-test" }
 
-# Compile generated Mojo -> run it in the sandbox. Proves the codegen->run
-# pipeline end to end: benign code computes over real data; malicious code
-# (reads $HOME) is contained.
-pipeline-demo = { cmd = "mkdir -p build && mojo build src/pipeline_demo.mojo -o build/pipeline-demo && ./build/pipeline-demo" }
-
-# FULL THIN SLICE end to end (mock model): sanitize CSV -> guarded codegen (mock)
-# -> dealias + inject path -> compile + run in sandbox -> print the result. Run
-# under pixi so CONDA_PREFIX/PATH are set for the in-process compile step.
-e2e-demo = { cmd = "mkdir -p demo/data demo/scratch build && printf 'name,age\\nalice,30\\nbob,25\\ncarol,41\\n' > demo/data/records.csv && mojo build src/headgate.mojo -I ../flare -I ../json -I ../jinja2.mojo/src -o build/headgate && HEADGATE_MOCK=1 ./build/headgate; rm -rf demo", depends-on = ["flare-ffi"] }
-
 # Unit-test the remote-API token Budget (offline).
 budget-test = { cmd = "mkdir -p build && mojo build src/budget_test.mojo -o build/budget-test && ./build/budget-test" }
 
-# Verify the budget-depleted -> LOCAL routing: HEADGATE_REMOTE_TOKEN_BUDGET=0 forces
-# codegen to the local model (a canned server returning a valid Mojo program), which
-# then compiles + runs -> ROW_COUNT= 3. Proves routing without a real remote call.
-budget-route-demo = { cmd = "mkdir -p demo/data demo/scratch build && printf 'name,age\\nalice,30\\nbob,25\\ncarol,41\\n' > demo/data/records.csv && python3 scripts/local_codegen_server.py & SRV=$!; sleep 1; mojo build src/headgate.mojo -I ../flare -I ../json -I ../jinja2.mojo/src -o build/headgate && HEADGATE_REMOTE_TOKEN_BUDGET=0 HEADGATE_LOCAL_URL=http://127.0.0.1:8799 ./build/headgate; R=$?; kill $SRV 2>/dev/null; rm -rf demo; exit $R", depends-on = ["flare-ffi"] }
-
-# Full composition root (src/headgate.mojo). transport.mojo now imports flare's
-# HttpClient + json, so this needs -I ../flare -I ../json and the flare FFI shims.
+# Full composition root (src/headgate.mojo — the VAULT CLI harness). transport.mojo
+# imports flare's HttpClient + json, so this needs -I ../flare -I ../json and the
+# flare FFI shims; the vault run path dlopens the extra shims from vault-ffi. This
+# is what `pixi run build` produces.
+build      = { cmd = "mkdir -p build && mojo build src/headgate.mojo -I ../flare -I ../json -I ../jinja2.mojo/src -o build/headgate", depends-on = ["flare-ffi", "vault-ffi"] }
 build-full = { cmd = "mkdir -p build && mojo build src/headgate.mojo -I ../flare -I ../json -I ../jinja2.mojo/src -o build/headgate", depends-on = ["flare-ffi", "vault-ffi"] }
 
 # headgate over HTTP (src/server.mojo) — the local backend for web/. Same

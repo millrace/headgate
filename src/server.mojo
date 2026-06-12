@@ -1,14 +1,17 @@
 """server — headgate over HTTP (flare). The local backend for headgate-web (web/).
 
-Runs the SAME orchestrator the CLI does, on localhost:10000, behind one route:
+Runs the SAME vault orchestrator the CLI does, on localhost:10000, behind one route:
 
-    POST /chat   { "message": <task> }  ->  { "reply": <answer> }
+    POST /chat   { "message": <question> }  ->  { "reply": <answer> }
     GET  /health
     OPTIONS *    (CORS preflight, so the browser app on :5173 can call us)
 
 Single-threaded reactor — one task in flight at a time. The orchestrator lives
 in a heap `HeadgateState` reached through a pointer so the borrowed-self handler
 can still run `mut` codegen (mirrors inference-server/server.mojo).
+
+VAULT-ONLY: `/chat` always runs the private-vault codegen loop
+(`run_vault_task`) over the resolved vault dir. There is no CSV mode.
 
     pixi run serve-web        # listens on 127.0.0.1:10000
 """
@@ -19,23 +22,25 @@ from flare.prelude import *
 from flare.http import Handler
 
 from settings import load_config
-from wiring import build_orchestrator, has_csv, seed_demo
+from wiring import build_vault_orchestrator
 from orchestrator import Orchestrator
+from vaultcfg import vault_dir as resolve_vault_dir
 from json import loads
 
 comptime PORT = 10000
 
 
 struct HeadgateState(Movable):
-    """The orchestrator + data dir, loaded once and reached by the (borrowed-self)
-    handler through a pointer so `run_task` can still take `mut self`."""
+    """The vault orchestrator + vault dir, loaded once and reached by the
+    (borrowed-self) handler through a pointer so `run_vault_task` can still take
+    `mut self`. `/chat` always runs `run_vault_task` over `vault_dir`."""
 
     var orch: Orchestrator
-    var data_dir: String
+    var vault_dir: String
 
-    def __init__(out self, var orch: Orchestrator, var data_dir: String):
+    def __init__(out self, var orch: Orchestrator, var vault_dir: String):
         self.orch = orch^
-        self.data_dir = data_dir^
+        self.vault_dir = vault_dir^
 
 
 def _json_escape(s: String) -> String:
@@ -142,7 +147,8 @@ struct Api(Handler, Copyable, Movable):
         print("  chat: ", msg, sep="")
         var reply: String
         try:
-            reply = s.orch.run_task(msg, s.data_dir.copy())
+            # VAULT-ONLY: always the private-vault codegen loop over the vault dir.
+            reply = s.orch.run_vault_task(msg, s.vault_dir.copy())
         except e:
             reply = String("error: ") + String(e)
         return _cors(ok_json('{"reply":' + _json_escape(reply) + "}"))
@@ -151,15 +157,14 @@ struct Api(Handler, Copyable, Movable):
 def main() raises:
     var cfg = load_config()
 
-    # Non-interactive (no TTY): if the configured data dir has no .csv, seed a demo
-    # rather than prompting. Point data_dir at your CSV via config for real data.
-    var data_dir = cfg.data_dir.copy()
-    if not has_csv(data_dir):
-        seed_demo(data_dir)
-        print("seeded a demo dataset at " + data_dir + "/records.csv")
+    # VAULT-ONLY: build the vault orchestrator over the resolved vault dir
+    # (HEADGATE_VAULT_DIR / $DACULAR_VAULT / $HEADGATE_DATA / ~/dacular) and route
+    # /chat to run_vault_task.
+    var vault_dir = resolve_vault_dir()
+    print("headgate VAULT mode — vault dir: " + vault_dir)
+    var orch = build_vault_orchestrator(cfg, vault_dir)
 
-    var orch = build_orchestrator(cfg, data_dir)
-    var st = HeadgateState(orch^, data_dir^)
+    var st = HeadgateState(orch^, vault_dir^)
     var sp = alloc[HeadgateState](1)
     sp.init_pointee_move(st^)
     var api = Api(sp)

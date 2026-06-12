@@ -109,11 +109,11 @@ pixi.toml                             Mojo nightly + flare/jinja2.mojo wiring; `
 sandbox/headgate.sb.template          PROVEN Seatbelt confinement profile
 sandbox/spike.sh                      6/6-passing containment proof (no toolchain needed)
 src/egress.mojo                       EgressGuard — outbound confidentiality chokepoint
-src/schema.mojo                       SchemaSanitizer — alias names + synthetic samples
+src/vaultcfg.mojo                     dacular vault paths (manifest bin, -I set, index dir)
 src/transport.mojo                    Local/Remote clients (remote gated by EgressGuard)
 src/sandbox.mojo + src/broker.mojo    containment runner + capability allowlist
-src/orchestrator.mojo                 core loop: synthetic-debug → real-run
-src/headgate.mojo                     composition root / CLI + REPL
+src/orchestrator.mojo                 core loop: aliased manifest → codegen → loopback run
+src/headgate.mojo + src/server.mojo   composition root: CLI vault harness + HTTP server
 web/                                  headgate for the web — local React chat UI
 ```
 
@@ -127,18 +127,15 @@ Early, but past "just a doc":
   [SPIKE.md](SPIKE.md).
 - **First vertical slice: compiles + runs.** `src/sandbox.mojo` is filled in
   end-to-end — it renders the Seatbelt profile, canonicalizes paths (`realpath`),
-  execs under `sandbox-exec`, and captures exit code + output, all from Mojo.
-  `pixi run sandbox-demo` (or `pixi run build`) builds `build/sandbox-demo`, which
-  re-verifies containment from Mojo: in-scope read works, out-of-scope read and
-  network egress are denied.
-- **Real CSV schema sanitizer + egress guard.** `pixi run schema-demo` (type
-  inference + aliasing + dealias) and `pixi run egress-test` (3/3: clean passes,
-  fingerprint + canary blocked — confidentiality enforced, not nominal).
-- **Generated-code pipeline + full thin slice.** `pixi run pipeline-demo` compiles
-  generated Mojo and runs it in the sandbox (benign computes over real data;
-  malicious `$HOME` reader contained). `pixi run e2e-demo` runs the whole flow —
-  sanitize → guarded codegen (mock) → dealias + inject path → compile + run in
-  sandbox → result (`ROW_COUNT= 3`).
+  execs under `sandbox-exec`, and captures exit code + output, all from Mojo. The
+  loopback-only VAULT run profile is verified by `pixi run vault-spike`.
+- **Egress guard.** `pixi run egress-test` (3/3: clean passes, fingerprint +
+  canary blocked — confidentiality enforced, not nominal).
+- **VAULT codegen loop (`pixi run build` → `build/headgate`).** The frontier
+  model writes a `from vault import *` program from the ALIASED dacular manifest;
+  headgate compiles it (looping the fix on compile errors only) and runs it in
+  the loopback sandbox over the real vault — only the printed answer surfaces.
+  `headgate vault "<question>" [dir]`.
 - **Transport over flare (pure Mojo).** `src/transport.mojo` uses flare's
   `HttpClient` + json (no curl/python). `LocalClient` (OpenAI/plain-HTTP) is
   runtime-verified — `pixi run local-probe` → `LOCAL HTTP OK`. `RemoteClient`
@@ -146,10 +143,9 @@ Early, but past "just a doc":
   flare's FFI shims are built into this env by the `flare-ffi` task.
 - **Remote-API budget with local fallback.** `HEADGATE_REMOTE_TOKEN_BUDGET` caps
   spend on the frontier model (tokens charged from the API's `usage`); once
-  depleted, codegen **and** compile/runtime fixes route to the LOCAL model
+  depleted, codegen **and** compile fixes route to the LOCAL model
   (trusted + free, lower quality) instead of failing. `-1`/unset = unlimited,
-  `0` = always-local, `N` = N tokens then local. `pixi run budget-test` (unit) +
-  `pixi run budget-route-demo` (budget=0 → local codegen → `ROW_COUNT= 3`).
+  `0` = always-local, `N` = N tokens then local. `pixi run budget-test` (unit).
 - **Toolchain: pinned to `1.0.0b2.dev2026060706`** — the org nightly. The
   flare + json sibling forks are ported to it (json CPU-only; mozz disabled), so
   `-I ../flare -I ../json` resolve against the same toolchain.

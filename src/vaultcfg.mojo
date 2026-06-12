@@ -76,6 +76,23 @@ def vault_include_paths() raises -> List[String]:
     return out^
 
 
+def vault_dir() raises -> String:
+    """Resolve the vault dir for the SERVER's vault mode: HEADGATE_VAULT_DIR wins,
+    then $DACULAR_VAULT, then $HEADGATE_DATA, then ~/dacular (dacular's own
+    default). Mirrors headgate.mojo `_vault_dir()` (with no CLI arg) + dacular/src/
+    vault.mojo `_vault_dir()`."""
+    var d = getenv("HEADGATE_VAULT_DIR", "")
+    if d != "":
+        return d
+    d = getenv("DACULAR_VAULT", "")
+    if d != "":
+        return d
+    d = getenv("HEADGATE_DATA", "")
+    if d != "":
+        return d
+    return getenv("HOME", ".") + "/dacular"
+
+
 def vault_index_dir() raises -> String:
     """The dacular LanceDB index dir — read-allowed in the vault run sandbox so
     search() can reach the vector store + chunks.tsv side-table. Mirrors

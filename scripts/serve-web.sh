@@ -20,6 +20,20 @@ if [ ! -x ./build/headgate-server ]; then
     exit 1
 fi
 
+# The headgate web server is VAULT-ONLY: /chat answers questions about the vault
+# dir (HEADGATE_VAULT_DIR, else $DACULAR_VAULT / $HEADGATE_DATA / ~/dacular). The
+# dacular vault tools that the generated program calls (search/ask_local) reach
+# the local inference server over loopback at DACULAR_EMBED_URL (embeddings) and
+# DACULAR_LOCAL_URL (chat) — both default to the combined server on :8000/v1.
+# Export them so the headgate-server process env propagates to the sandboxed
+# generated program (which inherits the parent's environment) over loopback.
+# (The server is unconditionally vault-only — no HEADGATE_VAULT gate.)
+export HEADGATE_VAULT_DIR="${HEADGATE_VAULT_DIR:-}"
+export DACULAR_VAULT="${DACULAR_VAULT:-$HEADGATE_VAULT_DIR}"
+export DACULAR_EMBED_URL="${DACULAR_EMBED_URL:-http://127.0.0.1:8000/v1}"
+export DACULAR_LOCAL_URL="${DACULAR_LOCAL_URL:-http://127.0.0.1:8000/v1}"
+echo "mode:     VAULT (dir: ${HEADGATE_VAULT_DIR:-<resolved>})" >&2
+
 # Locate the Tailscale CLI (on PATH, or the macOS app bundle).
 TS=""
 if command -v tailscale >/dev/null 2>&1; then

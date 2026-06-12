@@ -53,10 +53,10 @@ export default function App() {
       <main className="chat">
         {messages.length === 0 && (
           <div className="empty">
-            <h1>Ask a question about your data.</h1>
+            <h1>Ask your vault.</h1>
             <p className="hint">
-              headgate has a model write code that runs locally over your data —
-              nothing leaves your machine.
+              headgate has a model write code that runs locally over your private
+              vault — nothing leaves your machine.
             </p>
           </div>
         )}
@@ -84,7 +84,7 @@ export default function App() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask headgate…"
+          placeholder="Ask your vault…"
           aria-label="Message"
           autoFocus
         />
