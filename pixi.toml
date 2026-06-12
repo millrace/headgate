@@ -14,7 +14,7 @@ channels = [
 platforms = ["osx-arm64"]
 
 [dependencies]
-mojo = "==1.0.0b2.dev2026060706"
+mojo = "==1.0.0b3.dev2026061206"
 # flare's runtime deps — needed to build flare's FFI shims into this env (the
 # `flare-ffi` task) so flare's HTTP/TLS client works when consumed via -I ../flare.
 openssl          = ">=3.6.1,<4"
